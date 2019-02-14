@@ -1,10 +1,7 @@
 //
 //  main.cpp
 //  human-detector
-//
-//  Created by Ryan Reynolds on 2/10/19.
-//  Copyright © 2019 Ryan Reynolds. All rights reserved.
-//g++ $(pkg-config --cflags --libs /usr/local/Cellar/opencv/4.0.1/lib/pkgconfig/opencv4.pc) -std=c++11  yolo.cpp -o yolo
+
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
@@ -29,6 +26,7 @@ std::string keys =
 "{ haar  Haar  | | use haar cascading }"
 "{ dnn  DNN  | | use deep learning method}"
 "{ hog  Hog  | | use deep learning method}"
+"{ display  Display | | display the processed frame to the screen}"
 "{ @alias      | | An alias name of model to extract preprocessing parameters from models.yml file. }"
 "{ zoo         | models.yml | An optional path to file with preprocessing parameters }"
 "{ device      |  0 | camera device number. }"
@@ -55,7 +53,7 @@ using namespace dnn;
 float confThreshold, nmsThreshold;
 std::vector<std::string> classes;
 
-void postprocess(Mat& frame, const std::vector<Mat>& out, Net& net);
+std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& out, Net& net, int framecount);
 
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame);
 
@@ -222,7 +220,7 @@ int main(int argc, char** argv)
             std::vector<Mat> outs;
             net.forward(outs, outNames);
             
-            postprocess(frame, outs, net);
+            postprocess(frame, outs, net, fcount);
         }
         //append strings in haar, hog,yolo functions
         else if(parser.has("haar")){
@@ -257,24 +255,25 @@ int main(int argc, char** argv)
             putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0));
         }
         
+        //Write a time delayed packet (max files size 256kb)
         time_t end_time, elapsed_time;
         time(&end_time);
         elapsed_time = end_time - last_upload;
         if(elapsed_time>=1){
-          std::ofstream detectionfile("/home/pi/Desktop/project_master/cpp/output_files/data.json");
-          //std::ostream_iterator<std::string> output_iterator(detectionfile,"\n");
-          //std::copy(detections.begin(), detections.end(), output_iterator);
-          for(int i=0; i<detections.size(); i++){
-            std::cout<<detections.at(i);
-            detectionfile<<detections.at(i);
-          }
-          detectionfile<<"\n]";
-          detections.clear();
-         detectionfile.close();
-
-          
+            std::ofstream detectionfile("/home/pi/Desktop/project_master/cpp/output_files/data.json");
+            detectionfile<<"[\n";
+            //std::ostream_iterator<std::string> output_iterator(detectionfile,"\n");
+            //std::copy(detections.begin(), detections.end(), output_iterator);
+            for(int i=0; i<detections.size(); i++){
+                detectionfile<<detections.at(i);
+                if(parser.has("dnn"))
+                    std::cout<<detections.at(i);
+            }
+            detectionfile<<"\n]";
+            detections.clear();
+            detectionfile.close();
+            std::cout<<"__________________PACKET WRITTEN FOR TRANSMISSION__________________";
         }
-        
         imshow(kWinName, frame);
         fcount++;
     
@@ -282,7 +281,7 @@ int main(int argc, char** argv)
     return 0;
 }
 
-void postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net)
+std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net, int framecount)
 {
     static std::vector<int> outLayers = net.getUnconnectedOutLayers();
     static std::string outLayerType = net.getLayer(outLayers[0])->type;
@@ -358,7 +357,7 @@ void postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net)
     }
     else
     CV_Error(Error::StsNotImplemented, "Unknown output layer type: " + outLayerType);
-    
+    std:: vector<std::string> detections;
     std::vector<int> indices;
     NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
     for (size_t i = 0; i < indices.size(); ++i)
@@ -367,7 +366,13 @@ void postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net)
         Rect box = boxes[idx];
         drawPred(classIds[idx], confidences[idx], box.x, box.y,
                  box.x + box.width, box.y + box.height, frame);
+        int c_x = (box.x+box.width)/2;
+        int c_y = (box.y+box.height)/2;
+        std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
+        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
+        detections.push_back (det);
     }
+    return detections;
 }
 
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame)
@@ -509,10 +514,10 @@ std::vector <std::string> haarDetectAndDisplay(Mat& frame, int framecount)
     human_cascade.detectMultiScale( frame_gray, humans, 1.1, 2, 0|CASCADE_SCALE_IMAGE, Size(20, 20) );
     for(size_t i=0; i<humans.size();i++){
         drawPredHaar(humans[i].x, humans[i].y, humans[i].x+humans[i].width, humans[i].y+humans[i].height, frame);
-        int sentx = (humans[i].x+humans[i].width)/2;
-        int senty = (humans[i].y+humans[i].height)/2;
+        int c_x = (humans[i].x+humans[i].width)/2;
+        int c_y = (humans[i].y+humans[i].height)/2;
         std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
-        + std::to_string(sentx) + ", y: " + std::to_string(senty) + "}\n";
+        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
         detections.push_back (det);
         
     
@@ -533,10 +538,10 @@ std::vector<std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Siz
     {
         Rect r = human[i];
         rectangle(frame, r.tl(), r.br(), Scalar(0, 255, 0), 3);
-        int sentx = (human[i].x+human[i].width)/2;
-        int senty = (human[i].y+human[i].height)/2;
+        int c_x = (human[i].x+human[i].width)/2;
+        int c_y = (human[i].y+human[i].height)/2;
         std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
-        + std::to_string(sentx) + ", y: " + std::to_string(senty) + "}\n";
+        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
         detections.push_back (det);
     }
     return detections;

@@ -9,7 +9,7 @@ project(cpp)
 
 find_package(OpenCV REQUIRED )
 include_directories(${OpenCV_INCLUDE_DIRS})
-add_executable( yolo yolo.cpp )
-target_link_libraries(yolo ${OpenCV_LIBS})
+add_executable( detector detector.cpp )
+target_link_libraries(detector ${OpenCV_LIBS})
 
 
