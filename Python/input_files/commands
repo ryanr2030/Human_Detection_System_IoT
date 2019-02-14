@@ -1,0 +1,1 @@
+python detector.py hog vid "/home/pi/Desktop/project_master/input_files/input_vids/inputvid2.mp4" gt "/home/pi/Desktop/project_master/input_files/ground_truth/GroundTruth.csv" noshow

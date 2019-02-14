@@ -1,0 +1,5 @@
+.DS_Store
+cpp/input_files/yolo/weights/*
+Python/input_files/input_vids/*
+Python/output_files/output_vids/*
+
