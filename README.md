@@ -2,3 +2,7 @@
 
 This project uses a microcontroller (Raspberry Pi 3b+) to detect humans in a videostream.
 The detections are uploaded to an Azure IoT hub blob for storage and post processing.
+Detection Methods:
+  Haar
+  Hog
+  Yolov3
