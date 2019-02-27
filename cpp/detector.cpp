@@ -9,6 +9,7 @@
 #include <string>
 #include <iterator>
 #include <ctime>
+#include <opencv2/videoio.hpp>
 #include "opencv2/objdetect/objdetect.hpp"
 #include "opencv2/imgproc.hpp"
 #include "opencv2/highgui.hpp"
@@ -26,6 +27,7 @@ std::string keys =
 "{ haar  Haar  | | use haar cascading }"
 "{ dnn  DNN  | | use deep learning method}"
 "{ hog  Hog  | | use deep learning method}"
+"{ video | | Print help message. }"
 "{ display  Display | | display the processed frame to the screen}"
 "{ @alias      | | An alias name of model to extract preprocessing parameters from models.yml file. }"
 "{ zoo         | models.yml | An optional path to file with preprocessing parameters }"
@@ -90,6 +92,10 @@ bool gamma_corr;
 
 int main(int argc, char** argv)
 {
+    VideoWriter writer;
+    int codec = VideoWriter::fourcc('M', 'J', 'P', 'G');  // select desired codec (must be available at runtime)
+    double fps = 10;                          // framerate of the created video stream
+    std::string outvid="/home/pi/Desktop/project_master/cpp/output_files/test.avi";
     CommandLineParser parser(argc, argv, keys);
     std::vector<std::string> detections;
     detections.push_back("[");
@@ -105,7 +111,7 @@ int main(int argc, char** argv)
     Size win_size(win_width, win_width * 2);
     Size win_stride(win_stride_width, win_stride_height);
     HOGDescriptor hog(win_size, Size(16, 16), Size(8, 8), Size(8, 8), 9, 1, -1, HOGDescriptor::L2Hys, 0.2, gamma_corr, cv::HOGDescriptor::DEFAULT_NLEVELS);
-    
+
     //DNN Locals
     const std::string modelName = parser.get<String>("@alias");
     const std::string zooFile = parser.get<String>("zoo");
@@ -167,6 +173,7 @@ int main(int argc, char** argv)
         net.setPreferableTarget(parser.get<int>("target"));
         outNames = net.getUnconnectedOutLayersNames();
     }
+    if(parser.has("video")){std::cout<<"HI\n";}
 
     // Create a window
     static const std::string kWinName = "Deep learning object detection in OpenCV";
@@ -192,6 +199,7 @@ int main(int argc, char** argv)
     Mat frame, blob;
     UMat frame_img;
     std::vector<std::string> temp;
+
      
     while (waitKey(1) < 0)
     {
@@ -201,6 +209,18 @@ int main(int argc, char** argv)
         {
             waitKey();
             break;
+        }
+        bool isColor = (frame.type() == CV_8UC3);
+        //open video writer
+        if(parser.has("video")){
+            if (!writer.isOpened()) {
+                writer.open(outvid, codec, fps, frame.size(), isColor);
+                std::cout<<"WRITER OPENED FOR: "<<outvid<<"\n";
+                if (!writer.isOpened()) {
+                    std::cerr << "Could not open the output video file for write\n";
+                    return -1;
+                }
+            }
         }
         
         if(parser.has("dnn")){
@@ -220,7 +240,12 @@ int main(int argc, char** argv)
             std::vector<Mat> outs;
             net.forward(outs, outNames);
             
-            postprocess(frame, outs, net, fcount);
+            std::cout<<"About to draw SHIT";
+            temp=postprocess(frame, outs, net, fcount);
+            std::cout<<"DRAWING SHIT";
+
+            detections.insert(detections.end(), temp.begin(), temp.end());
+            temp.clear();
         }
         //append strings in haar, hog,yolo functions
         else if(parser.has("haar")){
@@ -263,11 +288,10 @@ int main(int argc, char** argv)
             std::ofstream detectionfile("/home/pi/Desktop/project_master/cpp/output_files/data.json");
             detectionfile<<"[\n";
             //std::ostream_iterator<std::string> output_iterator(detectionfile,"\n");
-            //std::copy(detections.begin(), detections.end(), output_iterator);
+            //std::copy(detections.begin(), detec+tions.end(), output_iterator);
             for(int i=0; i<detections.size(); i++){
                 detectionfile<<detections.at(i);
-                if(parser.has("dnn"))
-                    std::cout<<detections.at(i);
+                std::cout<<detections.at(i);
             }
             detectionfile<<"\n]";
             detections.clear();
@@ -275,6 +299,12 @@ int main(int argc, char** argv)
             std::cout<<"__________________PACKET WRITTEN FOR TRANSMISSION__________________";
         }
         imshow(kWinName, frame);
+        if(parser.has("video")){
+            if(writer.isOpened()){
+                std::cout<<"WRITING TO FILE"<<std::endl;
+                writer.write(frame);
+            }            
+        }
         fcount++;
     
     }
@@ -362,6 +392,7 @@ std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, N
     NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
     for (size_t i = 0; i < indices.size(); ++i)
     {
+        
         int idx = indices[i];
         Rect box = boxes[idx];
         drawPred(classIds[idx], confidences[idx], box.x, box.y,
@@ -370,8 +401,10 @@ std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, N
         int c_y = (box.y+box.height)/2;
         std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
         + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
-        detections.push_back (det);
+        detections.push_back(det);
+    
     }
+
     return detections;
 }
 
@@ -393,6 +426,7 @@ void drawPred(int classId, float conf, int left, int top, int right, int bottom,
     rectangle(frame, Point(left, top - labelSize.height),
               Point(left + labelSize.width, top + baseLine), Scalar::all(255), FILLED);
     putText(frame, label, Point(left, top), FONT_HERSHEY_SIMPLEX, 0.5, Scalar());
+
 }
 
 //method to draw prediction for Haar

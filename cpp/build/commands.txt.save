@@ -1,0 +1,1 @@
+./yolo --dnn --config=/home/pi/Desktop/project_master/cpp/input_files/yolo/cfg/yolov3-voc.cfg --model=/home/pi/Desktop/project_master/cpp/input_files/yolo/weights/yolov3-voc_40000.weights --classes=/home/pi/Desktop/project_master/cpp/input_files/yolo/names/voc.names --width=416 --height=416 --scale=0.00392 --rgb
