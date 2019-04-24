@@ -6,3 +6,4 @@ Detection Methods:
   Haar
   Hog
   Yolov3
+  TinyYoloV3
