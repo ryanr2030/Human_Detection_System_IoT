@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Marker Animations</title>
+    <style>
+        /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+        #map {
+            height: 50%;
+            width: 100%;
+        }
+        #detectChart {
+            height: 100%;
+            width: 50%;
+            float:left;
+        }
+        #performChart {
+            height: 100%;
+            width: 50%;
+            float:left;
+        }
+        .container {
+            /* for display purposes */
+            position: relative;
+
+        ]
+        }
+
+        /* Optional: Makes the sample page fill the window. */
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div class="container">
+<canvas id="detectChart"  ></canvas>
+<canvas id="performChart" > </canvas>
+</div>
+
+<script src="/socket.io/socket.io.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.js" type="text/javascript"></script>
+
+<script src="https://code.jquery.com/jquery-1.11.1.js" type="text/javascript"></script>
+<script>
+    var marker;
+
+    function initMap() {
+        var map = new google.maps.Map(document.getElementById('map'), {
+            zoom: 18,
+            center: {lat: 41.502144, lng: -81.675163}
+        });
+        // language=HTML
+        var contentString = '<div id="content">' +
+            '<div id="siteNotice">' +
+            '</div>' +
+            '<h1 id="firstHeading" class="firstHeading">Human Congestion</h1>' +
+            '<div id="bodyContent">' +
+            '<p>There are <span id="count">0</span> human(s) currently here <br>' +
+            'Detection Rate: <span id="fps"></span> fps <br>';
+
+        var infowindow = new google.maps.InfoWindow({
+            content: contentString
+
+        });
+        var pinIcon = new google.maps.MarkerImage(
+            "http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=%E2%80%A2|57EF43",
+            null, /* size is determined at runtime */
+            null, /* origin is 0,0 */
+            null, /* anchor is bottom center of the scaled image */
+            new google.maps.Size(25, 50)
+        );
+        marker = new google.maps.Marker({
+            icon: pinIcon,
+            map: map,
+            draggable: false,
+            animation: google.maps.Animation.DROP,
+            position: {lat: 41.502144, lng: -81.675163},
+        });
+
+        marker.addListener('click', function () {
+            infowindow.open(map, marker);
+        });
+    }
+    var ctx = $('#detectChart');
+    var detectChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets:[{
+                label: 'CSU Student Center',
+                data: [],
+                pointBorderwidth: 5,
+                borderColor: "#ff6e5a",
+                border: [25, 25],
+                pointBackgroundColor: "#000000",
+                pointBorderColor: "#000000",
+                pointHoverBackgroundColor: "#000000",
+                pointHoverBorderColor: "#466be7",
+                fill: false
+            }]
+        },
+        options: {
+            responsive: false,
+            title: {
+                display: true,
+                text: 'Humans vs. Time',
+                fontSize: 20
+            },
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    boxWidth: 20,
+                    boxHeight: 20,
+                    fontColor: 'black',
+                    fontSize: 15
+                }
+            },
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        fontSize: 15
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: '# of Humans',
+                        fontSize: 15
+                    }
+                }],
+                xAxes: [{
+                    ticks: {
+                        fontSize: 5
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'Time',
+                        fontSize: 15
+                    }
+                }]
+            }
+        }
+    });
+
+    var ctx = $('#performChart');
+    var performChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets:[{
+                label: 'CSU Student Center',
+                data: [],
+                pointBorderwidth: 5,
+                borderColor: "#ffdd24",
+                border: [25, 25],
+                pointBackgroundColor: "#000000",
+                pointBorderColor: "#000000",
+                pointHoverBackgroundColor: "#000000",
+                pointHoverBorderColor: "#466be7",
+                fill: false
+            }]
+        },
+        options: {
+            responsive: false,
+            title: {
+                display: true,
+                text: 'FPS vs. Time',
+                fontSize: 20
+            },
+            legend: {
+                display: true,
+                position: 'top',
+                labels: {
+                    boxWidth: 20,
+                    boxHeight: 20,
+                    fontColor: 'black',
+                    fontSize: 15
+                }
+            },
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        fontSize: 15
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'FPS',
+                        fontSize: 15
+                    }
+                }],
+                xAxes: [{
+                    ticks: {
+                        fontSize: 5
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'Time',
+                        fontSize: 15
+                    }
+                }]
+            }
+        }
+    });
+
+    $(function () {
+        var socket = io();
+        socket.on('count', function(msg){
+            let people = msg;
+            let fps = people.detections.fps;
+            people = people.detections.humans;
+            marker.setIcon(changeIcon(people.length));
+            $('#count').text(people.length);
+            $('#fps').text(fps);
+            var today = new Date();
+            var time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+            var date = (today.getMonth()+1)+'/'+today.getDate()+'/'+today.getFullYear();
+            console.log(time+" "+people.length);
+            add_detectChart(time, people.length);
+            add_performChart(time, fps);
+        });
+    });
+    function add_detectChart(label, data){
+        detectChart.data.labels.push(label);
+        detectChart.data.datasets[0].data.push(data);
+        detectChart.update();
+    }
+    function add_performChart(label, data){
+        performChart.data.labels.push(label);
+        performChart.data.datasets[0].data.push(data);
+        performChart.update();
+    }
+
+    function changeIcon(num_people){
+        let congestion=10,color=["FF0000","FF9000", "FFFF00", "57EF43"],
+            range_split=Math.floor(congestion/(color.length)), index=3;
+        //index 3 green
+        if(num_people<=range_split){
+            index=3;
+        }
+        //index 2 yellow
+        else if(num_people>range_split && num_people<=range_split*2){
+            index=2;
+        }
+        //index 1 orange
+        else if(num_people>range_split*2 && num_people<=range_split*3){
+            index=1;
+        }
+        //index 0 red
+        else if(num_people>range_split*3){
+            index=0;
+        }
+        return new google.maps.MarkerImage(
+            "http://chart.apis.google.com/chart?chst=d_map_pin_letter&chld=%E2%80%A2|"+color[index],
+            null, /* size is determined at runtime */
+            null, /* origin is 0,0 */
+            null, /* anchor is bottom center of the scaled image */
+            new google.maps.Size(25, 50));
+    }
+
+
+</script>
+
+<script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAjUa2lA6fAaQGobcHmoJK5nZKwqVRIVDQ&callback=initMap">
+</script>
+
+
+
+</body>
+</html>
