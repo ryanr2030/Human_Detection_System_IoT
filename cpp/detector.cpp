@@ -27,7 +27,7 @@ std::string keys =
 "{ haar  Haar  | | use haar cascading }"
 "{ dnn  DNN  | | use deep learning method}"
 "{ hog  Hog  | | use deep learning method}"
-"{ video | | Print help message. }"
+"{ video | | save the video to a file }"
 "{ display  Display | | display the processed frame to the screen}"
 "{ @alias      | | An alias name of model to extract preprocessing parameters from models.yml file. }"
 "{ zoo         | models.yml | An optional path to file with preprocessing parameters }"
@@ -55,13 +55,13 @@ using namespace dnn;
 float confThreshold, nmsThreshold;
 std::vector<std::string> classes;
 
-std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& out, Net& net, int framecount);
+std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& out, Net& net, int framecount, CommandLineParser parser);
 
 void drawPred(int classId, float conf, int left, int top, int right, int bottom, Mat& frame);
 
 void callback(int pos, void* userdata);
-std::vector <std::string> haarDetectAndDisplay( Mat& frame, int framecount );
-std::vector <std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Size win_stride, int framecount);
+std::vector <std::string> haarDetectAndDisplay( Mat& frame, int framecount, CommandLineParser parser);
+std::vector <std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Size win_stride, int framecount, CommandLineParser parser);
 
 
 std::string genArgument(const std::string& argName, const std::string& help,
@@ -94,11 +94,10 @@ int main(int argc, char** argv)
 {
     VideoWriter writer;
     int codec = VideoWriter::fourcc('M', 'J', 'P', 'G');  // select desired codec (must be available at runtime)
-    double fps = 10;                          // framerate of the created video stream
+    double fps_vid = 10, fps=0;                          // framerate of the created video stream
     std::string outvid="/home/pi/Desktop/project_master/cpp/output_files/test.avi";
     CommandLineParser parser(argc, argv, keys);
     std::vector<std::string> detections;
-    detections.push_back("[");
     //Hog Locals
     win_width = 48;
     win_stride_width = 8;
@@ -173,24 +172,24 @@ int main(int argc, char** argv)
         net.setPreferableTarget(parser.get<int>("target"));
         outNames = net.getUnconnectedOutLayersNames();
     }
-    if(parser.has("video")){std::cout<<"HI\n";}
-
-    // Create a window
     static const std::string kWinName = "Deep learning object detection in OpenCV";
-    namedWindow(kWinName, WINDOW_NORMAL);
-    int initialConf = (int)(confThreshold * 100);
-    createTrackbar("Confidence threshold, %", kWinName, &initialConf, 99, callback);
+    if(parser.has("display")){
 
-    
+        // Create a window
+        namedWindow(kWinName, WINDOW_NORMAL);
+        int initialConf = (int)(confThreshold * 100);
+        //createTrackbar("Confidence threshold, %", kWinName, &initialConf, 99, callback);
+
+    }
     // Open a video file or an image file or a camera stream.
     VideoCapture cap;
     
     //
 
     if (parser.has("input"))
-    cap.open(parser.get<String>("input"));
+        cap.open("/home/pi/Downloads/inputvid2.mp4");
     else
-    cap.open(parser.get<int>("device"));
+        cap.open(parser.get<int>("device"));
     int fcount=1;
     start=stop=time(&absStart);
     time_t last_upload;
@@ -214,7 +213,7 @@ int main(int argc, char** argv)
         //open video writer
         if(parser.has("video")){
             if (!writer.isOpened()) {
-                writer.open(outvid, codec, fps, frame.size(), isColor);
+                writer.open(outvid, codec, fps_vid, frame.size(), isColor);
                 std::cout<<"WRITER OPENED FOR: "<<outvid<<"\n";
                 if (!writer.isOpened()) {
                     std::cerr << "Could not open the output video file for write\n";
@@ -240,9 +239,9 @@ int main(int argc, char** argv)
             std::vector<Mat> outs;
             net.forward(outs, outNames);
             
-            std::cout<<"About to draw SHIT";
-            temp=postprocess(frame, outs, net, fcount);
-            std::cout<<"DRAWING SHIT";
+           
+            temp=postprocess(frame, outs, net, fcount, parser);
+       
 
             detections.insert(detections.end(), temp.begin(), temp.end());
             temp.clear();
@@ -250,13 +249,13 @@ int main(int argc, char** argv)
         //append strings in haar, hog,yolo functions
         else if(parser.has("haar")){
             if(!frame.empty())
-                temp=haarDetectAndDisplay(frame, fcount);
+                temp=haarDetectAndDisplay(frame, fcount, parser);
                 detections.insert(detections.end(), temp.begin(), temp.end());
                 temp.clear();
         }
         else if(parser.has("hog")){
             if(!frame.empty()){
-                temp=hogDetectAndDisplay(frame, hog, win_stride, fcount);
+                temp=hogDetectAndDisplay(frame, hog, win_stride, fcount, parser);
                 detections.insert(detections.end(), temp.begin(), temp.end());
                 temp.clear();
                }
@@ -267,7 +266,7 @@ int main(int argc, char** argv)
             std::vector<double> layersTimes;
             double freq = getTickFrequency() / 1000;
             double t = net.getPerfProfile(layersTimes) / freq;
-            double fps=1/(t*.001);
+            fps=1/(t*.001);
             std::string label = format("Inference time: %.2f ms FPS: %.2f", t, fps);
             putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0));
         }
@@ -275,7 +274,7 @@ int main(int argc, char** argv)
             time(&stop);
             double elapsed=(stop-start)*1000;
             double absElapsed=stop-absStart;
-            double fps=fcount/absElapsed;
+            fps=fcount/absElapsed;
             std::string label = format("FPS: %.2f", fps);
             putText(frame, label, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0));
         }
@@ -284,21 +283,26 @@ int main(int argc, char** argv)
         time_t end_time, elapsed_time;
         time(&end_time);
         elapsed_time = end_time - last_upload;
-        if(elapsed_time>=1){
+        if(elapsed_time>=0){
             std::ofstream detectionfile("/home/pi/Desktop/project_master/cpp/output_files/data.json");
-            detectionfile<<"[\n";
+            detectionfile<<"{\"detections\": { \"humans\":[";
             //std::ostream_iterator<std::string> output_iterator(detectionfile,"\n");
             //std::copy(detections.begin(), detec+tions.end(), output_iterator);
             for(int i=0; i<detections.size(); i++){
                 detectionfile<<detections.at(i);
                 std::cout<<detections.at(i);
             }
-            detectionfile<<"\n]";
+            std::ostringstream strs;
+            strs << fps;
+            std::string FPS = strs.str();
+            detectionfile<<"] , \"fps\": \""+FPS+"\"}}";
             detections.clear();
             detectionfile.close();
-            std::cout<<"__________________PACKET WRITTEN FOR TRANSMISSION__________________";
+            std::cout<<"\n__________________PACKET WRITTEN FOR TRANSMISSION__________________\n";
         }
-        imshow(kWinName, frame);
+        if(parser.has("display")){
+            imshow(kWinName, frame);
+        }
         if(parser.has("video")){
             if(writer.isOpened()){
                 std::cout<<"WRITING TO FILE"<<std::endl;
@@ -311,7 +315,7 @@ int main(int argc, char** argv)
     return 0;
 }
 
-std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net, int framecount)
+std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, Net& net, int framecount, CommandLineParser parser)
 {
     static std::vector<int> outLayers = net.getUnconnectedOutLayers();
     static std::string outLayerType = net.getLayer(outLayers[0])->type;
@@ -385,24 +389,50 @@ std::vector<std::string> postprocess(Mat& frame, const std::vector<Mat>& outs, N
             }
         }
     }
-    else
-    CV_Error(Error::StsNotImplemented, "Unknown output layer type: " + outLayerType);
-    std:: vector<std::string> detections;
+    else{
+        CV_Error(Error::StsNotImplemented, "Unknown output layer type: " + outLayerType);}
+    
+
+    std:: vector<std::string> detections, test;
     std::vector<int> indices;
     NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
     for (size_t i = 0; i < indices.size(); ++i)
     {
-        
         int idx = indices[i];
-        Rect box = boxes[idx];
-        drawPred(classIds[idx], confidences[idx], box.x, box.y,
-                 box.x + box.width, box.y + box.height, frame);
-        int c_x = (box.x+box.width)/2;
-        int c_y = (box.y+box.height)/2;
-        std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
-        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
-        detections.push_back(det);
+        if(classIds[idx]==0){
+            Rect box = boxes[idx];
+            drawPred(classIds[idx], confidences[idx], box.x, box.y,
+                     box.x + box.width, box.y + box.height, frame);
+            int c_x = (box.x+box.width)/2;
+            int c_y = (box.y+box.height)/2;
+            std::string holder = std::to_string(framecount)+" "+std::to_string(i + 1)+" "+std::to_string(box.x)+" "+std::to_string(box.y)+" "+std::to_string(box.x + box.width)+
+            " "+std::to_string(box.y + box.height)+"\n";
+            std::string det = "{\"frame\": \"" + std::to_string(framecount) + "\", \"num_in_frame\": \"" + std::to_string(i + 1) + "\", \"x\": \"" 
+                + std::to_string(c_x) + "\", \"y\": \"" + std::to_string(c_y) + "\"},\n";
+            detections.push_back (det);
+            test.push_back (holder);
+
+        }
     
+    }
+    if(detections.size()>=1){
+        std::string last= detections[detections.size()-1];
+        last.pop_back();
+        last.pop_back();
+        detections[detections.size()-1]=last;
+    }
+    if(parser.has("input")){
+        std::ofstream detectfile;
+        detectfile.open("/home/pi/Desktop/project_master/cpp/output_files/detections.txt", std::ios_base::app);
+        if(test.size()== 0){
+            detectfile<<std::to_string(framecount)+"\n";
+        }
+        else{
+            for( int i = 0; i<test.size(); i++){
+                detectfile<<test.at(i);
+            }
+        }
+        detectfile.close();
     }
 
     return detections;
@@ -536,9 +566,9 @@ std::string genPreprocArguments(const std::string& modelName, const std::string&
 }
 /*HAAR DETECTION */
 /** @function detectAndDisplay */
-std::vector <std::string> haarDetectAndDisplay(Mat& frame, int framecount)
+std::vector <std::string> haarDetectAndDisplay(Mat& frame, int framecount, CommandLineParser parser)
 {
-    std::vector<String> detections;
+    std::vector<String> detections, test;
     std::vector<Rect> humans;
     Mat frame_gray;
     cvtColor( frame, frame_gray, COLOR_BGR2GRAY );
@@ -550,19 +580,41 @@ std::vector <std::string> haarDetectAndDisplay(Mat& frame, int framecount)
         drawPredHaar(humans[i].x, humans[i].y, humans[i].x+humans[i].width, humans[i].y+humans[i].height, frame);
         int c_x = (humans[i].x+humans[i].width)/2;
         int c_y = (humans[i].y+humans[i].height)/2;
-        std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
-        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
-        detections.push_back (det);
-        
-    
+        std::string holder = std::to_string(framecount)+" "+std::to_string(i + 1)+" "+std::to_string(humans[i].x)+" "+std::to_string(humans[i].y)+" "+std::to_string(humans[i].x + humans[i].width)+
+            " "+std::to_string(humans[i].y + humans[i].height)+"\n";
+        if(i==humans.size()-1){
+            std::string det = "{\"frame\": \"" + std::to_string(framecount) + "\", \"num_in_frame\": \"" + std::to_string(i + 1) + "\", \"x\": \"" 
+            + std::to_string(c_x) + "\", \"y\": \"" + std::to_string(c_y) + "\"}\n";
+            detections.push_back (det);
+        }
+        else{
+            std::string det = "{\"frame\": \"" + std::to_string(framecount) + "\", \"num_in_frame\": \"" + std::to_string(i + 1) + "\", \"x\": \"" 
+            + std::to_string(c_x) + "\", \"y\": \"" + std::to_string(c_y) + "\"},\n";
+            detections.push_back (det);
+        }
+        test.push_back (holder);
+    }
+     
+    if(parser.has("input")){
+        std::ofstream detectfile;
+        detectfile.open("/home/pi/Desktop/project_master/cpp/output_files/detections.txt", std::ios_base::app);
+        if(test.size()== 0){
+            detectfile<<std::to_string(framecount)+"\n";
+        }
+        else{
+            for( int i = 0; i<test.size(); i++){
+                detectfile<<test.at(i);
+            }
+        }
+        detectfile.close();
     }
     return detections;
 }
 
 /**HOG DETECTION*/
-std::vector<std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Size win_stride, int framecount){
+std::vector<std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Size win_stride, int framecount, CommandLineParser parser){
     
-    std::vector<std::string> detections;
+    std::vector<std::string> detections, test;
     UMat frm;
     cvtColor(frame, frm, COLOR_BGR2GRAY );
     hog.nlevels=nlevels;
@@ -574,9 +626,33 @@ std::vector<std::string> hogDetectAndDisplay(Mat& frame, HOGDescriptor& hog, Siz
         rectangle(frame, r.tl(), r.br(), Scalar(0, 255, 0), 3);
         int c_x = (human[i].x+human[i].width)/2;
         int c_y = (human[i].y+human[i].height)/2;
-        std::string det = "{Human: frame: " + std::to_string(framecount) + ", num_in_frame: " + std::to_string(i + 1) + ", x: " 
-        + std::to_string(c_x) + ", y: " + std::to_string(c_y) + "}\n";
-        detections.push_back (det);
+        std::string holder = std::to_string(framecount)+" "+std::to_string(i + 1)+" "+std::to_string(human[i].x)+" "+std::to_string(human[i].y)+" "+std::to_string(human[i].x + human[i].width)+
+            " "+std::to_string(human[i].y + human[i].height)+"\n";
+        if(i==human.size()-1){
+            std::string det = "{\"frame\": \"" + std::to_string(framecount) + "\", \"num_in_frame\": \"" + std::to_string(i + 1) + "\", \"x\": \"" 
+            + std::to_string(c_x) + "\", \"y\": \"" + std::to_string(c_y) + "\"}\n";
+            detections.push_back (det);
+        }
+        else{
+            std::string det = "{\"frame\": \"" + std::to_string(framecount) + "\", \"num_in_frame\": \"" + std::to_string(i + 1) + "\", \"x\": \"" 
+            + std::to_string(c_x) + "\", \"y\": \"" + std::to_string(c_y) + "\"},\n";
+            detections.push_back (det);
+        }
+        test.push_back(holder);
+    }
+    
+    if(parser.has("input")){
+        std::ofstream detectfile;
+        detectfile.open("/home/pi/Desktop/project_master/cpp/output_files/detections.txt", std::ios_base::app);
+        if(test.size()== 0){
+            detectfile<<std::to_string(framecount)+"\n";
+        }
+        else{
+            for( int i = 0; i<test.size(); i++){
+                detectfile<<test.at(i);
+            }
+        }
+        detectfile.close();
     }
     return detections;
     

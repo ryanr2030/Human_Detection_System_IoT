@@ -21,7 +21,8 @@ from iothub_client import IoTHubMessage, IoTHubMessageDispositionResult, IoTHubE
 # The device connection string to authenticate the device with your IoT hub.
 # Using the Azure CLI:
 # az iot hub device-identity show-connection-string --hub-name {YourIoTHubName} --device-id MyNodeDevice --output table
-CONNECTION_STRING =""
+CONNECTION_STRING = "HostName=HumanDetectionDemo.azure-devices.net;DeviceId=raspberrypi;SharedAccessKey=k14irPPcg0QrbUiqLavbYgpjwPSY87rC6yg9FMKRjfg="
+
 # Using the MQTT protocol.
 PROTOCOL = IoTHubTransportProvider.MQTT
 MESSAGE_TIMEOUT = 10000
@@ -47,17 +48,17 @@ def iothub_client_telemetry_sample_run():
 
             msg=open("/home/pi/Desktop/project_master/cpp/output_files/data.json",'r')
             content=msg.read()
-            if(temp==content):
-                time.sleep(1)
-                continue
-            message = IoTHubMessage(content)
-            temp=content
-            # Send the message.
-            print( "Sending message: %s" % message.get_string() )
-            client.send_event_async(message, send_confirmation_callback, None)
-            time.sleep(1)
-
             msg.close()
+            #or content=="[\n]" or content=="[]" 
+            if(temp==content or content==""):
+                continue
+            else:
+                message = IoTHubMessage(content)
+                temp=content
+                # Send the message.
+                print( "Sending message: %s" % message.get_string() )
+                client.send_event_async(message, send_confirmation_callback, None)
+            
 
 
 
